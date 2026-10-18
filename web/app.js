@@ -85,7 +85,7 @@ function draw(){
  $('project-status').textContent=p?`${p.folder} · 자동 저장 · 수정 ${p.revision}`:'폴더를 열면 프로젝트가 자동으로 저장됩니다.';
 }
 function visibleLines(){const t=track();if(!t)return[];const showExcluded=$('show-excluded').checked;const query=($('line-search')?.value||'').trim().toLocaleLowerCase();return t.lines.map((l,i)=>({...l,index:i})).filter(l=>(showExcluded?l.excluded:(!l.excluded&&(!$('suspicious').checked||(l.flags.length&&!l.reviewed))))&&(!query||l.text.toLocaleLowerCase().includes(query)));}
-function selectLine(id,event={}){
+function selectLine(id,event={},redraw=true){
  const t=track(),visible=visibleLines(),index=visible.findIndex(line=>line.id===id);if(!t||index<0)return;
  const additive=Boolean(event.ctrlKey||event.metaKey),anchorIndex=state.selectionAnchor?visible.findIndex(line=>line.id===state.selectionAnchor):-1;
  if(event.shiftKey&&anchorIndex>=0){
@@ -95,7 +95,15 @@ function selectLine(id,event={}){
   if(state.selected.has(id))state.selected.delete(id);else state.selected.add(id);
   state.selectionAnchor=id;
  }else{state.selected=new Set([id]);state.selectionAnchor=id;}
- drawLines();
+ if(redraw)drawLines();
+ else{
+  for(const row of $('lines').querySelectorAll('[data-line]')){
+   const selected=state.selected.has(row.dataset.line);row.classList.toggle('selected',selected);
+   row.querySelector('[data-select]').checked=selected;
+  }
+  $('selection-count').textContent=`${state.selected.size}줄 선택됨`;
+  timingEditor.draw();
+ }
 }
 function selectLines(ids,anchor=null){state.selected=new Set(ids);state.selectionAnchor=anchor??ids.at(-1)??null;drawLines();}
 function drawLines(){
@@ -115,7 +123,7 @@ function drawLines(){
   const warnings=l.reviewed?'':pending?'분석 결과 대기 중':warningFlags.map(f=>f==='unmatched'&&gaps.has(l.id)?'앞뒤 가사 사이에 위치 후보 표시':flags[f]||f).join(' · ');
   const rowState=l.excluded?'excluded':warnings?'attention':l.reviewed?'reviewed':l.locked?'edited':'ready';
   const stateLabel=l.excluded?'제외':warnings?'확인 필요':l.reviewed?'검수 완료':l.locked?'수동 편집':'자동 후보';
-  return `<tr data-line="${l.id}" data-state="${rowState}" class="${state.selected.has(l.id)?'selected':''}"><td><input type="checkbox" data-select="${l.id}" ${state.selected.has(l.id)?'checked':''} aria-label="${l.index+1}번째 가사 선택"></td><td class="muted">${l.index+1}</td><td><div class="line-main"><span class="row-state-chip state-${rowState}" aria-label="상태: ${stateLabel}">${stateLabel}</span><button class="line-text" data-focus="${l.id}" aria-label="${l.index+1}번째 가사로 이동">${esc(l.text)}</button></div><div class="${l.reviewed?'verified':'flags'}">${l.locked?'수동 잠금 · ':''}${l.reviewed?'검수 완료':esc(warnings)||'자동 정렬 후보'}</div></td><td><input type="number" min="0" step="0.1" value="${l.startMs===null?'':(l.startMs/1000).toFixed(3)}" data-time="startMs" aria-label="${l.index+1}번째 시작 시간"></td><td><input type="number" min="0" step="0.1" value="${l.endMs===null?'':(l.endMs/1000).toFixed(3)}" data-time="endMs" aria-label="${l.index+1}번째 종료 시간"></td><td><button class="row-more" popovertarget="actions-${l.id}" aria-label="${l.index+1}번째 가사 작업">⋯</button><div class="row-actions" popover id="actions-${l.id}"><button data-listen="${l.id}">듣기</button><button data-review="${l.id}" ${!reviewPatch(t.lines,l.id)?'disabled':''}>확인</button><button data-copy-line="${l.id}" title="같은 가사를 다음 줄에 복사">복사</button><button data-add-line="${l.id}" title="이 줄 다음에 새 가사 추가">추가</button><button data-delete-line="${l.id}" title="이 가사 줄 삭제">삭제</button></div></td></tr>`;
+  return `<tr data-line="${l.id}" data-state="${rowState}" class="${state.selected.has(l.id)?'selected':''}"><td><input type="checkbox" data-select="${l.id}" ${state.selected.has(l.id)?'checked':''} aria-label="${l.index+1}번째 가사 선택"></td><td class="muted">${l.index+1}</td><td><div class="line-main"><span class="row-state-chip state-${rowState}" aria-label="상태: ${stateLabel}">${stateLabel}</span><button class="line-text" data-focus="${l.id}" title="더블클릭하여 자막 편집 · Enter 저장 · Esc 취소" aria-label="${l.index+1}번째 가사로 이동">${esc(l.text)}</button></div><div class="${l.reviewed?'verified':'flags'}">${l.locked?'수동 잠금 · ':''}${l.reviewed?'검수 완료':esc(warnings)||'자동 정렬 후보'}</div></td><td><input type="number" min="0" step="0.1" value="${l.startMs===null?'':(l.startMs/1000).toFixed(3)}" data-time="startMs" aria-label="${l.index+1}번째 시작 시간"></td><td><input type="number" min="0" step="0.1" value="${l.endMs===null?'':(l.endMs/1000).toFixed(3)}" data-time="endMs" aria-label="${l.index+1}번째 종료 시간"></td><td><button class="row-more" popovertarget="actions-${l.id}" aria-label="${l.index+1}번째 가사 작업">⋯</button><div class="row-actions" popover id="actions-${l.id}"><button data-listen="${l.id}">듣기</button><button data-review="${l.id}" ${!reviewPatch(t.lines,l.id)?'disabled':''}>확인</button><button data-copy-line="${l.id}" title="같은 가사를 다음 줄에 복사">복사</button><button data-add-line="${l.id}" title="이 줄 다음에 새 가사 추가">추가</button><button data-delete-line="${l.id}" title="이 가사 줄 삭제">삭제</button></div></td></tr>`;
  }).join(''):'<tr><td colspan="6" class="empty-small">'+(t?.lines.length?'이 필터에 해당하는 가사가 없습니다.':'원문 가사를 가져오거나 붙여넣어 주세요.')+'</td></tr>';
 }
 function drawJobs(){const jobs=state.project?.jobs||[];const ordered=[...jobs.filter(j=>j.status==='running'),...jobs.filter(j=>j.status==='queued'),...jobs.filter(j=>!['running','queued'].includes(j.status)).reverse()];$('jobs').innerHTML=jobs.length?ordered.slice(0,12).map(j=>`<div class="job ${j.status}"><div class="job-head"><span>${esc(labels[j.status]||j.status)}</span><strong>${esc(j.title)}</strong>${['queued','running'].includes(j.status)?`<button data-cancel="${j.id}">취소</button>`:''}</div><small>${esc(j.message)}</small>${typeof j.progress==='number'&&j.status==='running'?`<progress max="1" value="${j.progress}"></progress>`:''}<div>${j.outputs.map((o,i)=>`<a href="/api/jobs/${j.id}/output/${i}" download="${esc(o.name)}">${esc(o.name)}</a>`).join('')}</div></div>`).join(''):'<p class="muted">진행 중인 작업이 없습니다.</p>';}
@@ -301,11 +309,12 @@ $('lines').addEventListener('change',safe(async e=>{
  const input=e.target.closest('[data-time]');if(input){const row=input.closest('[data-line]');const start=row.querySelector('[data-time="startMs"]').value;const end=row.querySelector('[data-time="endMs"]').value;if(start===''||end==='')return;input.blur();await patchTrack({lines:[{id:row.dataset.line,startMs:Math.round(Number(start)*1000),endMs:Math.round(Number(end)*1000)}]});}
 }));
 $('lines').onclick=safe(async e=>{
+ if(e.target.closest('[data-inline-editor]'))return;
  const select=e.target.closest('[data-select]');
  if(select){e.preventDefault();selectLine(select.dataset.select,e);return;}
  const row=e.target.closest('[data-line]');
  const focus=e.target.closest('[data-focus]');
- if(focus){selectLine(focus.dataset.focus,e);return timingEditor.focus(focus.dataset.focus,{select:false});}
+ if(focus){selectLine(focus.dataset.focus,e,false);return timingEditor.focus(focus.dataset.focus,{select:false});}
  if(row&&!e.target.closest('input,textarea,button')){selectLine(row.dataset.line,e);timingEditor.focus(row.dataset.line,{select:false});return;}
  const copy=e.target.closest('[data-copy-line]');
  if(copy){await flushSave();const created=await copyLineBlock([copy.dataset.copyLine]);notice(`${created.length||1}개 가사를 한 묶음으로 복사했습니다. 위쪽 묶음 레이어를 드래그해 위치를 지정하세요.`,true);return;}
@@ -315,6 +324,40 @@ $('lines').onclick=safe(async e=>{
  if(remove){const line=track()?.lines.find(l=>l.id===remove.dataset.deleteLine);if(!line)return;if(!window.confirm(`“${line.text}” 가사를 삭제할까요? 이전 수정 취소로 되돌릴 수 있습니다.`))return;await flushSave();state.selected.delete(line.id);if(state.selectionAnchor===line.id)state.selectionAnchor=null;await patchTrack({lineOp:{action:'delete',lineId:line.id}});notice('가사 줄을 삭제했습니다. 필요하면 이전 수정 취소로 되돌리세요.',true);return;}
  const listenButton=e.target.closest('[data-listen]');if(listenButton)return listen(listenButton.dataset.listen);
  const review=e.target.closest('[data-review]');if(review){await flushSave();const edit=reviewPatch(track().lines,review.dataset.review);if(!edit)throw new Error('확인할 위치 후보가 없습니다.');return patchTrack({lines:[edit]});}
+});
+
+// Keep the text button mounted on a single click so the second click can edit it.
+$('lines').addEventListener('dblclick',e=>{
+ const button=e.target.closest('[data-focus]');if(!button)return;
+ e.preventDefault();
+ const owner=track(),line=owner?.lines.find(item=>item.id===button.dataset.focus);if(!line)return;
+ const editor=document.createElement('textarea');
+ editor.dataset.inlineEditor=line.id;editor.value=line.text;editor.rows=2;
+ editor.setAttribute('aria-label','자막 문구 편집');
+ editor.title='Enter 저장 · Shift+Enter 줄바꿈 · Esc 취소';
+ editor.style.cssText='flex:1;min-width:0;width:100%;padding:5px 7px;resize:vertical;line-height:1.5';
+ button.replaceWith(editor);editor.focus();editor.select();
+ let saving=false,finished=false;
+ const cancel=()=>{if(saving||finished)return;finished=true;editor.replaceWith(button);button.focus();};
+ const save=async()=>{
+  if(saving||finished)return;
+  if(editor.value===line.text){cancel();return;}
+  if(!editor.value.trim()){notice('자막 문구를 입력해 주세요. 삭제는 가사 작업 메뉴를 이용하세요.');editor.focus();return;}
+  saving=true;editor.readOnly=true;
+  try{
+   await flushSave();
+   if(track()?.id!==owner.id)throw new Error('곡이 변경되어 저장하지 않았습니다. 원래 곡에서 다시 편집해 주세요.');
+   await patchTrack({lines:[{id:line.id,text:editor.value}]});
+   finished=true;editor.blur();drawLines();
+  }catch(error){editor.readOnly=false;editor.focus();report(error);}
+  finally{saving=false;}
+ };
+ editor.addEventListener('keydown',e=>{
+  e.stopPropagation();if(e.isComposing||e.keyCode===229)return;
+  if(e.key==='Escape'){e.preventDefault();cancel();}
+  else if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void save();}
+ });
+ editor.addEventListener('blur',()=>{void save();});
 });
 
 async function bulk(action){await flushSave();const selected=track()?.lines.filter(l=>state.selected.has(l.id))||[];if(!selected.length)throw new Error('먼저 가사 줄을 선택해 주세요.');await patchTrack({lines:selected.map(l=>action(l))});}

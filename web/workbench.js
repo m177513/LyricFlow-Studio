@@ -13,15 +13,30 @@ export function mountWorkbench(){
  const divider=document.createElement('div');divider.className='monitor-resizer';divider.tabIndex=0;divider.setAttribute('role','separator');divider.setAttribute('aria-label','미리보기 너비 조절');divider.setAttribute('aria-orientation','vertical');divider.title='왼쪽으로 끌면 미리보기가 커집니다. 두 번 클릭하면 기본 크기로 돌아갑니다.';workspace.append(divider);
  let preferredWidth=null,widthDrag=null;
  try{const n=Number(localStorage.getItem('lyricflow-monitor-width'));if(Number.isFinite(n)&&n>0)preferredWidth=n;}catch{}
- const setWidth=n=>{const total=workspace.clientWidth,min=Math.min(220,total*.45),max=Math.max(min,total-(total<650?160:260)-8),width=Math.round(Math.max(min,Math.min(max,n)));workspace.style.setProperty('--monitor-width',width+'px');divider.setAttribute('aria-valuenow',String(width));return width;};
+ const setWidth=n=>{
+  const total=workspace.clientWidth,style=getComputedStyle(monitor);
+  const px=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight);
+  const py=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom);
+  // Only the complete video frame must fit above the fixed timeline.
+  // Transport and caption editing are below it, not part of its height budget.
+  const scrollbar=monitor.offsetWidth-monitor.clientWidth;
+  const frameHeight=Math.max(0,workspace.clientHeight-py);
+  const heightLimit=Math.floor(frameHeight*16/9+px+scrollbar);
+  const max=Math.max(1,Math.min(total-(total<650?160:260)-8,heightLimit));
+  const min=Math.min(220,total*.45,max),width=Math.floor(Math.max(min,Math.min(max,n)));
+  workspace.style.setProperty('--monitor-width',width+'px');
+  divider.setAttribute('aria-valuemin',String(Math.floor(min)));
+  divider.setAttribute('aria-valuemax',String(max));
+  divider.setAttribute('aria-valuenow',String(width));return width;
+ };
  const saveWidth=()=>{try{localStorage.setItem('lyricflow-monitor-width',String(preferredWidth));}catch{}};
  divider.onpointerdown=e=>{if(e.button!==0)return;widthDrag={x:e.clientX,width:monitor.getBoundingClientRect().width};divider.setPointerCapture(e.pointerId);body.classList.add('resizing-monitor');e.preventDefault();};
- divider.onpointermove=e=>{if(widthDrag)preferredWidth=setWidth(widthDrag.width+widthDrag.x-e.clientX);};
+ divider.onpointermove=e=>{if(widthDrag){preferredWidth=setWidth(widthDrag.width+widthDrag.x-e.clientX);monitor.scrollTop=0;}};
  const endWidth=()=>{if(widthDrag){widthDrag=null;body.classList.remove('resizing-monitor');if(preferredWidth!==null)saveWidth();}};
  divider.onpointerup=endWidth;divider.onpointercancel=endWidth;
  divider.ondblclick=()=>{preferredWidth=null;workspace.style.removeProperty('--monitor-width');try{localStorage.removeItem('lyricflow-monitor-width');}catch{}};
  divider.onkeydown=e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();preferredWidth=setWidth(monitor.getBoundingClientRect().width+(e.key==='ArrowLeft'?30:-30));saveWidth();};
- new ResizeObserver(()=>{if(preferredWidth!==null&&!widthDrag)setWidth(preferredWidth);}).observe(workspace);
+ new ResizeObserver(()=>{if(!widthDrag)setWidth(preferredWidth??monitor.getBoundingClientRect().width);}).observe(workspace);
  const timeline=$('.timeline-workspace');$('.layout').append(timeline);
  const resize=document.createElement('div');resize.className='timeline-resizer';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','타임라인 높이 조절');resize.setAttribute('aria-orientation','horizontal');timeline.prepend(resize);
  const setHeight=n=>{const height=Math.round(Math.max(220,Math.min(window.innerHeight*.55,n)));body.style.setProperty('--timeline-height',height+'px');resize.setAttribute('aria-valuenow',String(height));return height;};
@@ -37,9 +52,14 @@ export function mountWorkbench(){
  const bulk=$('.bulk-tools');for(const b of [...bulk.querySelectorAll('button')])actions.append(b);bulk.append(actions);
  const markerMenu=document.createElement('details');markerMenu.className='marker-menu';markerMenu.innerHTML='<summary>마커 ▾</summary>';markerMenu.append($('.timeline-marker-tools'),$('.timeline-marker-list'));$('.timing-tools').append(markerMenu);
  const beatMenu=document.createElement('details');beatMenu.className='beat-menu';beatMenu.innerHTML='<summary>박자 설정 ▾</summary>';beatMenu.append($('.beat-settings'));$('.timeline-grid-tools').append(beatMenu);
- const manual=$('.caption-time-fields');manual.hidden=true;
- const help=document.createElement('p');help.className='drag-guide';help.textContent='블록을 끌어 위치 이동 · 양끝을 끌어 길이 조절';$('.caption-detail').append(help);
- // Numeric fields remain internal to existing I/O keyboard handlers, not in the editing UI.
+ const detail=$('.caption-detail');detail.classList.add('timeline-stamp-controls');
+ const startButton=detail.querySelector('[data-detail="start"]'),endButton=detail.querySelector('[data-detail="end"]');
+ startButton.textContent='자막 시작';startButton.title='선택 가사의 시작을 현재 재생 위치로 지정 [I]';
+ endButton.textContent='자막 끝';endButton.title='선택 가사의 끝을 현재 재생 위치로 지정 [O]';
+ detail.prepend(startButton,endButton);
+ $('.timing-tools').append(detail);
+ // Keep existing timing handlers and draft fields; only their presentation moves.
+ $('.caption-time-fields').hidden=true;
  $('#selected-caption-text').placeholder='목록이나 타임라인에서 가사를 선택하세요.';
  const toolbar=$('.head-buttons');$('.top-actions').append(toolbar);
  document.addEventListener('click',e=>{

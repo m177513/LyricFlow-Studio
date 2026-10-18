@@ -107,6 +107,17 @@ test('live local HTTP API, persistence, validation and queue',async(t)=>{
   });
   await t.test('a rejected patch does not partially mutate the track',async()=>{const before=app.store.getTrack(track.id).title;const r=await call(`/api/tracks/${track.id}`,'PATCH',{revision:project.revision,patch:{title:'should not survive',imageName:'outside.png'}});assert.equal(r.status,400);assert.equal(app.store.getTrack(track.id).title,before);});
   await t.test('manual timing edits are locked and survive an unrelated style change',async()=>{const edits=track.lines.map((l,i)=>({id:l.id,startMs:100+i*1500,endMs:1300+i*1500,reviewed:true}));let r=await call(`/api/tracks/${track.id}`,'PATCH',{revision:project.revision,patch:{lines:edits}});assert.equal(r.status,200);project=r.body;track=project.tracks[0];assert(track.lines.every(l=>l.locked));r=await call('/api/style','PATCH',{revision:project.revision,style:{...project.style,color:'#ffffee'}});assert.equal(r.status,200);project=r.body;assert.equal(project.tracks[0].lines[0].startMs,100);});
+  await t.test('inline text edits preserve source and timing, reach preview, and undo exactly',async()=>{
+    const before=structuredClone(track.lines[0]),source=track.sourceLyrics;
+    let r=await call(`/api/tracks/${track.id}`,'PATCH',{revision:project.revision,patch:{lines:[{id:before.id,text:'수정된 표시 자막'}]}});
+    assert.equal(r.status,200);project=r.body;track=project.tracks[0];
+    assert.equal(track.sourceLyrics,source);assert.equal(track.lines[0].id,before.id);
+    assert.equal(track.lines[0].startMs,before.startMs);assert.equal(track.lines[0].endMs,before.endMs);
+    assert.equal(track.lines[0].text,'수정된 표시 자막');assert.equal(track.lines[0].locked,true);
+    r=await call(`/api/tracks/${track.id}/preview`);assert.equal(r.body.tracks[0].captions[0].text,'수정된 표시 자막');
+    r=await call(`/api/tracks/${track.id}/undo`,'POST',{revision:project.revision});
+    assert.equal(r.status,200);project=r.body;track=project.tracks[0];assert.deepEqual(track.lines[0],before);
+  });
   await t.test('SRT export uses preserved text and edited milliseconds',async()=>{const r=await fetch(app.url+`/api/tracks/${track.id}/srt`);assert.equal(r.status,200);const text=await r.text();assert.match(text,/00:00:00,100 --> 00:00:01,300/);assert.match(text,/\(yeah\) 두 번째 가사/);});
   await t.test('preview props use the same caption fields and style as rendering',async()=>{const r=await call(`/api/tracks/${track.id}/preview`);assert.equal(r.status,200);assert.equal(r.body.tracks[0].captions[0].startMs,100);assert.equal(r.body.style.color,'#ffffee');assert.equal(r.body.tracks[0].durationInFrames,120);});
   await t.test('excluded line persists and disappears from preview and SRT until restored',async()=>{
