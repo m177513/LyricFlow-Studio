@@ -1,0 +1,68 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {parseLyrics,reconcileLines,validateLines,validateMarkers,annotateTiming,mergeAlignment,alignmentKey,DEFAULT_STYLE,validateStyle,playlistSchedule,toSrt,within,atomicJSON,readJSON,renderProblems} from '../server/core.mjs';
+import {parseSunoHtml,validateSunoUrl} from '../server/suno.mjs';
+const make=(text='한 줄')=>reconcileLines([],[text])[0];
+
+test('reviewed timings survive new analysis even if unlocked',()=>{
+ const row={...make(),startMs:100,endMs:900,reviewed:true,locked:false};
+ const out=mergeAlignment([row],[{...row,startMs:3000,endMs:4000,reviewed:false}]);
+ assert.equal(out[0].startMs,100);assert.equal(out[0].reviewed,true);
+});
+test('audio source and retry settings separate alignment caches',()=>{
+ const track={audio:{sha256:'audio'},lines:[make()]};
+ const baseline=alignmentKey(track,{audioSource:'original',retryMissing:false});
+ assert.notEqual(baseline,alignmentKey(track,{audioSource:'vocals',retryMissing:false}));
+ assert.notEqual(baseline,alignmentKey(track,{audioSource:'original',retryMissing:true}));
+});
+
+test('production tags are excluded but ad-libs and source punctuation survive',()=>{assert.deepEqual(parseLyrics('[Intro no humming]\r\n[Verse 1] 안녕\r\n(yeah) 그대로!\n'),['안녕','(yeah) 그대로!']);});
+test('full-line vocal and solo production labels are excluded',()=>{assert.deepEqual(parseLyrics('[Vocal: centered lead]\n가사 한 줄\n[Guitar Solo]\n다음 줄'),['가사 한 줄','다음 줄']);});
+test('square-bracket directions are removed as requested; surrounding lyrics survive',()=>{assert.deepEqual(parseLyrics('[ad-lib] 안녕\n[Producer note] 그대로\n[01:23.450] 타임스탬프'),['안녕','그대로','타임스탬프']);});
+test('repeated hooks get different IDs',()=>{const a=reconcileLines([],['후렴','중간','후렴']);assert.equal(new Set(a.map(l=>l.id)).size,3);});
+test('unchanged manual lines survive a source insertion',()=>{const a=reconcileLines([],['A','B','A']);a[2].locked=true;a[2].startMs=1000;a[2].endMs=2000;const b=reconcileLines(a,['A','새 줄','B','A']);assert.equal(b[3].id,a[2].id);assert.equal(b[3].startMs,1000);assert.equal(b[3].locked,true);});
+test('unmatched lines never receive invented timestamps',()=>{const a=make();assert.equal(a.startMs,null);assert.equal(a.endMs,null);});
+test('negative/out-of-range/partial timestamps rejected',()=>{for(const times of [[-1,100],[100,50],[0,10001],[null,100]])assert.throws(()=>validateLines([{...make(),startMs:times[0],endMs:times[1]}],10000));});
+test('NaN and infinite timestamps rejected',()=>{assert.throws(()=>validateLines([{...make(),startMs:NaN,endMs:10}],10000));assert.throws(()=>validateLines([{...make(),startMs:1,endMs:Infinity}],10000));});
+test('markers are sorted, rounded and range checked',()=>{const markers=validateMarkers([{id:'b',atMs:1200.6,label:'끝'},{id:'a',atMs:100.4,label:'시작'}],2000);assert.deepEqual(markers.map(m=>[m.id,m.atMs]),[['a',100],['b',1201]]);assert.throws(()=>validateMarkers([{id:'x',atMs:2001,label:'범위 밖'}],2000));assert.throws(()=>validateMarkers([{id:'x',atMs:0,label:''}],2000));});
+test('overlap is flagged on both rows',()=>{const a=[{...make('a'),startMs:100,endMs:500},{...make('b'),startMs:400,endMs:800}];const out=annotateTiming(a);assert(out.every(l=>l.flags.includes('overlap')));});
+test('manual locks survive re-alignment',()=>{const a={...make(),startMs:100,endMs:200,locked:true,reviewed:true,flags:[]};const b=mergeAlignment([a],[{...a,startMs:500,endMs:600}]);assert.equal(b[0].startMs,100);assert.equal(b[0].reviewed,true);});
+test('manual copied and added lines survive re-alignment until reviewed',()=>{const rows=[{...make('복사'),startMs:null,endMs:null,flags:['manual_copy'],reviewed:false},{...make('추가'),startMs:100,endMs:800,flags:['manual_added'],reviewed:false}];const aligned=rows.map((line,index)=>({...line,startMs:2000+index*1000,endMs:2800+index*1000,text:'자동 인식'}));const out=mergeAlignment(rows,aligned);assert.equal(out[0].startMs,null);assert.equal(out[0].text,'복사');assert.equal(out[1].startMs,100);assert.equal(out[1].text,'추가');});
+test('unlocked timestamps are replaced but original text is retained',()=>{const a=make('원문');const b=mergeAlignment([a],[{...a,text:'인식 오류',startMs:100,endMs:800}]);assert.equal(b[0].text,'원문');assert.equal(b[0].startMs,100);assert.equal(b[0].confidence,null);});
+test('styles and images do not invalidate alignment cache',()=>{const t={audio:{sha256:'a'},lines:[make('원문')],imageName:'a.png',style:DEFAULT_STYLE};assert.equal(alignmentKey(t,{model:'small'}),alignmentKey({...t,imageName:'b.png',style:{...DEFAULT_STYLE,color:'#aabbcc'}},{model:'small'}));});
+test('source text and model settings invalidate alignment cache',()=>{const t={audio:{sha256:'a'},lines:[make('원문')]};assert.notEqual(alignmentKey(t,{}),alignmentKey({...t,lines:[make('다른 가사')]},{}));assert.notEqual(alignmentKey(t,{model:'small'}),alignmentKey(t,{model:'medium'}));});
+test('SRT times and consecutive numbering are correct',()=>{const out=toSrt([{...make(),startMs:59999,endMs:61002},{...make('끝'),startMs:65000,endMs:66000}]);assert.match(out,/00:00:59,999 --> 00:01:01,002/);assert.match(out,/\n2\n/);});
+test('playlist starts are integer frames and do not overlap',()=>{const rows=playlistSchedule([{durationMs:1001},{durationMs:1001},{durationMs:1001}],30);assert.deepEqual(rows.map(r=>r.from),[0,31,62]);assert.deepEqual(rows.map(r=>r.durationInFrames),[31,31,31]);});
+test('invalid image/video style is rejected',()=>{assert.throws(()=>validateStyle({...DEFAULT_STYLE,color:'red'}));assert.throws(()=>validateStyle({...DEFAULT_STYLE,fontSize:NaN}));assert.throws(()=>validateStyle({...DEFAULT_STYLE,width:1920,height:720}));});
+test('missing timing blocks render even when marked reviewed',()=>{const t={imageName:'cover.png',lines:[{...make(),reviewed:true}]};assert(renderProblems(t).some(s=>s.includes('시간이 없는')));});
+test('a reviewed overlap still blocks render',()=>{const t={imageName:'cover.png',lines:[{...make(),startMs:0,endMs:1000,flags:['overlap'],reviewed:true}]};assert(renderProblems(t).some(s=>s.includes('겹침')));});
+test('an instrumental does not require lyric lines',()=>{assert.deepEqual(renderProblems({imageName:'cover.png',instrumental:true,lines:[]}),[]);});
+test('atomic JSON persists Unicode and rejects malformed files',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'lf-json-'));try{const f=path.join(root,'state.json');atomicJSON(f,{가사:'그대로'});assert.equal(readJSON(f).가사,'그대로');fs.writeFileSync(f,'{');assert.throws(()=>readJSON(f));}finally{fs.rmSync(root,{recursive:true,force:true});}});
+test('path containment rejects symlinks pointing outside a registered root',()=>{if(process.platform==='win32')return;const root=fs.mkdtempSync(path.join(os.tmpdir(),'lf-safe-'));try{fs.symlinkSync(os.tmpdir(),path.join(root,'escape'));assert.throws(()=>within(root,path.join(root,'escape')));}finally{fs.rmSync(root,{recursive:true,force:true});}});
+const id='11111111-2222-4333-8444-555555555555';
+test('Suno import only accepts a public HTTPS song page',()=>{assert.equal(validateSunoUrl(`https://suno.com/song/${id}?x=1`).songId,id);for(const url of ['http://127.0.0.1','https://suno.com.evil.test/song/'+id,'https://u:p@suno.com/song/'+id,'https://suno.com:8443/song/'+id,'https://suno.com/s/abc'])assert.throws(()=>validateSunoUrl(url));});
+test('Suno parser selects the requested song rather than a related song',()=>{const html='<script type="application/json">'+JSON.stringify({clips:[{id:'other',metadata:{prompt:'잘못된 가사'}},{id,title:'제목',metadata:{prompt:'원문\n(yeah)',duration:120}}]})+'</script>';const out=parseSunoHtml(html,id);assert.equal(out.lyrics,'원문\n(yeah)');assert.equal(out.title,'제목');});
+test('Suno RSC text is parsed as data without evaluation',()=>{const payload='1:'+JSON.stringify({id,title:'제목',metadata:{prompt:'가사'}})+'\n';const html='<script>self.__next_f.push([1,'+JSON.stringify(payload)+']);</script>';assert.equal(parseSunoHtml(html,id).lyrics,'가사');});
+test('Suno RSC row directly after a length-delimited text row is parsed',()=>{const lyric='첫 줄\n끝 줄';const payload='2:T'+Buffer.byteLength(lyric).toString(16)+','+lyric+'1:'+JSON.stringify({id,title:'제목',metadata:{prompt:'$2'}})+'\n';const html='<script>self.__next_f.push([1,'+JSON.stringify(payload)+']);</script>';assert.equal(parseSunoHtml(html,id).lyrics,lyric);});
+test('Suno config keys containing "captcha" are not reported as an access limit',()=>{assert.throws(()=>parseSunoHtml('<script>'+JSON.stringify({hcaptchaFallbackEnabled:true})+'</script>',id),e=>e.code==='suno_lyrics_not_found');});
+test('ambiguous Suno lyric candidates are not auto-selected',()=>{const html='<script>'+JSON.stringify([{id,lyrics:'가사 A'},{id,lyrics:'가사 B'}])+'</script>';assert.throws(()=>parseSunoHtml(html,id));});
+test('access-limited Suno page produces a paste fallback error',()=>{assert.throws(()=>parseSunoHtml('<html>Verify you are human</html>',id),/직접 붙여넣어/);});
+test('excluded lyrics retain identity and timing, survive alignment, and restore validation', () => {
+ const rows=reconcileLines([],['sung','unsung']);
+ Object.assign(rows[0],{startMs:100,endMs:1000,reviewed:true,flags:[]});
+ rows[1].excluded=true;
+ const track={imageName:'cover.png',lines:annotateTiming(rows)};
+ assert.deepEqual(renderProblems(track),[]);
+ assert.equal(toSrt(track.lines).includes('unsung'),false);
+ const merged=mergeAlignment(rows,rows.map(l=>({...l,startMs:200,endMs:900,excluded:false})));
+ assert.equal(merged[1].excluded,true);
+ assert.equal(merged[1].startMs,null);
+ track.lines=annotateTiming(rows.map(l=>({...l,excluded:false})));
+ assert(renderProblems(track).length>0);
+ rows[1].startMs=200;rows[1].endMs=900;
+ assert.deepEqual(renderProblems({...track,lines:annotateTiming(rows)}),[]);
+ assert.equal(toSrt(rows).includes('unsung'),false);
+});

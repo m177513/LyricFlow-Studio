@@ -1,0 +1,37 @@
+{
+  "name": "lyricflow-studio",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first Suno lyric alignment and Remotion video workbench",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server/main.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/shorts.test.mjs tests/core.test.mjs tests/migration.test.mjs tests/api.test.mjs tests/timing-editor.test.mjs tests/render-profile.test.mjs tests/processing-status.test.mjs tests/portable-paths.test.mjs tests/webm.test.mjs",
+    "test:python": "python -m unittest discover -s tests -p test_*.py -v",
+    "doctor": "node scripts/doctor.mjs",
+    "demo": "node scripts/create-demo.mjs",
+    "studio": "remotion studio video/index.tsx --no-open"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.506",
+    "@remotion/captions": "4.0.506",
+    "@remotion/cli": "4.0.506",
+    "@remotion/media": "4.0.506",
+    "@remotion/player": "4.0.506",
+    "@remotion/renderer": "4.0.506",
+    "remotion": "4.0.506",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "esbuild": "0.25.6",
+    "typescript": "5.8.3"
+  }
+}

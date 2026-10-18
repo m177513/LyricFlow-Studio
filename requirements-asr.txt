@@ -1,0 +1,3 @@
+# Direct versions are pinned. The installer records the resolved environment.
+# CUDA builds are deliberately not auto-installed on an uninspected Windows PC.
+faster-whisper==1.2.1

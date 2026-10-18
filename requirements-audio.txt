@@ -1,0 +1,8 @@
+# Install into .venv-audio; keep the previous ASR environment intact.
+-r requirements-asr.txt
+audio-separator[cpu]==0.47.0
+# Separator imports audioread via the pre-1.0 librosa dependency set.
+librosa==0.11.0
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1

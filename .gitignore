@@ -1,0 +1,17 @@
+node_modules/
+.venv/
+.venv-audio/
+.lyricflow-studio/
+**/.lyricflow-remotion/
+web/dist/
+__pycache__/
+*.pyc
+*.log
+.env
+.env.*
+!.env.example
+output/
+outputs/
+acceptance/
+verification/
+*.exe

@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {renderProfile,renderConcurrency} from '../worker/render-profile.mjs';
+const style={width:1920,height:1080,fps:30};const resources={threads:12,freeBytes:10*2**30};
+const args={style,resources,platform:'win32',sampleImage:'fixture.png'};
+test('GPU success uses required acceleration without CRF and records encoder',async()=>{const p=await renderProfile({...args,env:{},probe:async()=>{}});assert.equal(p.encoder,'h264_nvenc');assert.equal(p.options.hardwareAcceleration,'required');assert.equal(p.options.crf,undefined);assert.equal(p.concurrency,6);});
+test('unavailable GPU falls back in auto but fails explicit gpu mode',async()=>{const probe=async()=>{throw Error('driver unsupported');};const p=await renderProfile({...args,env:{},probe});assert.equal(p.encoder,'libx264');assert.equal(p.options.crf,18);assert.match(p.reason,/driver unsupported/);await assert.rejects(renderProfile({...args,env:{LYRICFLOW_RENDER_DEVICE:'gpu'},probe}),/driver unsupported/);});
+test('explicit CPU does not probe hardware; low memory constrains concurrency',async()=>{const p=await renderProfile({...args,env:{LYRICFLOW_RENDER_DEVICE:'cpu'},probe:async()=>{throw Error('should not run');}});assert.equal(p.device,'cpu');assert.equal(renderConcurrency({}, {threads:12,freeBytes:2.5*2**30}),1);assert.throws(()=>renderConcurrency({LYRICFLOW_RENDER_CONCURRENCY:'0'},resources));assert.equal(renderConcurrency({LYRICFLOW_RENDER_CONCURRENCY:'4'},resources),4);});
