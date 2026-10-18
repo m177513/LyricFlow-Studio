@@ -53,7 +53,7 @@
 | 항목 | 다운로드 | 이 프로젝트에서 확인할 사항 |
 |---|---|---|
 | Node.js와 npm | [Node.js 공식 다운로드](https://nodejs.org/en/download) | Node.js 22 이상. Windows용 설치 프로그램을 사용합니다. |
-| Python | [Python 공식 Windows 다운로드](https://www.python.org/downloads/windows/) | 자동 설치 스크립트는 **Python 3.11**과 `py -3.11`을 요구합니다. 최신 Python만 설치하면 조건을 충족하지 않을 수 있습니다. |
+| Python | [Python 공식 Windows 다운로드](https://www.python.org/downloads/windows/) | **Python 3.11 또는 3.12**. 설치 스크립트는 `py -3.11`, `py -3.12`, `python` 순서로 지원 버전을 확인합니다. 3.13 이상만 설치하면 조건을 충족하지 않습니다. |
 | FFmpeg와 ffprobe | [FFmpeg 공식 다운로드 안내](https://ffmpeg.org/download.html) · [공식 페이지에서 안내하는 Gyan Windows 빌드](https://www.gyan.dev/ffmpeg/builds/) | 두 실행 파일이 들어 있는 `bin` 폴더를 PATH에 등록해야 합니다. |
 
 Python Install Manager를 사용한다면 `py install 3.11`로 3.11을 추가할 수 있습니다([공식 설치 안내](https://docs.python.org/3/using/windows.html#installing-runtimes)). 이 명령은 새 Install Manager용이며 기존 Python Launcher에는 없을 수 있습니다.
@@ -68,14 +68,30 @@ ffmpeg -version
 ffprobe -version
 ```
 
+Python 3.12를 설치했다면 `py -3.12 --version`으로 확인합니다. `py` 명령이 없는 설치는 `python --version`이 3.11 또는 3.12인지 확인하세요. FFmpeg를 ZIP으로 설치했다면 압축을 푼 폴더의 `bin` 경로를 Windows의 **환경 변수 → 사용자 변수 → Path → 편집 → 새로 만들기**에 추가하고 터미널을 새로 엽니다.
+
 ### 앱 설치와 실행
 
 1. 소스 ZIP을 압축 해제합니다.
-2. 압축을 푼 폴더에서 `install_windows.bat`을 실행합니다. npm 패키지, Player, `.venv`의 Whisper 패키지와 `.venv-audio`의 보컬 분리 환경을 설치합니다.
+2. 압축을 푼 폴더에서 `install_windows.bat`을 실행합니다. npm 패키지, Player, `.venv`의 Whisper 패키지와 같은 Python 버전의 `.venv-audio` 보컬 분리 환경을 설치합니다. 패키지를 다운로드하므로 인터넷과 충분한 디스크 공간이 필요합니다. 마지막에 `Basic installation finished`가 나오는지 확인하세요.
 3. 완료 후 `run_windows.bat`을 실행합니다. 브라우저에서 로컬 앱이 열립니다. 실행 창은 작업하는 동안 열어 두세요.
 4. 음원과 원문 가사를 등록하고 **곡·출력 설정 → 음성 분석 → 선택 곡 분석**을 누릅니다. 최초 모델 다운로드에는 인터넷과 시간이 필요합니다.
 
-여러 Python 버전이 설치된 PC에서는 `python --version`도 확인하세요. 현재 보컬 분리 설치 스크립트는 `python` 명령으로 환경을 만들기 때문에, 이 명령도 지원 버전인 3.11 또는 3.12를 가리켜야 합니다. 아래 수동 설치 방법을 사용하면 Python 버전을 명시할 수 있습니다.
+설치가 끝나면 **작업 폴더 → 검수 데모**로 개인 자료 없이 화면을 먼저 확인할 수 있습니다. 데모는 설치 단계에서 준비되며, 다시 준비하려면 `npm run demo`를 실행합니다. 첫 실제 분석은 `tiny` 모델·CPU·원본 음악으로 짧은 음원을 시험한 다음 큰 모델이나 보컬 분리로 확장해도 됩니다. `tiny`는 빠른 동작 확인용이며 노래 싱크 품질을 보장하지 않습니다.
+
+데모로 영상 출력까지 확인하려면 첫 곡의 **2번째 가사로 이동 → 확인 후 다음 → 영상 출력**을 누릅니다. 데모의 의심 줄은 일부러 미검수 상태로 들어 있으므로 검수 확인 전에는 출력이 차단됩니다. 처음 영상을 만들 때는 렌더용 Chrome Headless Shell도 자동 다운로드할 수 있습니다. 모델과 렌더 브라우저를 준비하는 첫 실행에는 인터넷을 연결해 두세요.
+
+새 설치 시험 환경과 확인 범위는 [설치 검증 기록](docs/FRESH_INSTALL_CHECK.md)에 정리했습니다. 이 기록은 모든 PC의 드라이버·보안 설정·네트워크까지 보장하지 않습니다.
+
+### 설치가 중단되면
+
+- **Node.js 버전 오류**: 설치 후 터미널을 새로 열고 `node --version`이 22 이상인지 확인합니다. 기존 Node 경로가 먼저 잡히면 해당 설치/Path 설정을 정리해야 합니다.
+- **Python 버전 오류**: 3.11 또는 3.12를 설치합니다. 다른 버전으로 만든 `.venv`가 이미 있다면 새 ZIP을 다른 빈 폴더에 풀어 다시 설치하세요.
+- **FFmpeg를 찾지 못함**: `ffmpeg -version`과 `ffprobe -version`을 모두 확인합니다. FFmpeg ZIP의 `bin`을 Path에 추가한 뒤 새 창에서 재시도합니다.
+- **패키지·모델 다운로드 오류**: 인터넷 연결과 디스크 여유, 프록시/보안 프로그램의 차단 메시지를 확인합니다. 패키지는 `install_windows.bat`을 다시 실행할 수 있습니다. 보안 검증을 끄거나 알 수 없는 DLL을 내려받지 마세요.
+- **`metadata_errors` 오류**: 이전 ZIP으로 설치했다면 최신 ZIP으로 다시 설치하세요. 현재 의존성 파일은 faster-whisper 1.2.1과 호환되는 PyAV 18.1.0을 고정합니다.
+- **GPU 실행 오류**: 음성 분석 장치를 CPU로 바꾸어 확인합니다. GPU 지원은 드라이버와 별도 의존성에 따라 달라집니다.
+- **문제 신고**: 마지막 오류 메시지와 `npm run doctor` 출력을 [Issues](https://github.com/m177513/LyricFlow-Studio/issues)에 첨부하세요. 개인 곡·가사·사용자 경로는 지운 뒤 공유하세요. Codex나 Claude 설치는 필요하지 않습니다.
 
 ### Codex나 Claude가 필요한가요?
 

@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import wave
 from urllib.request import urlopen
+from urllib.error import URLError
 
 from alignment import align_to_words
 
@@ -62,7 +63,13 @@ def atomic_download(url, target, notify=lambda *args: None, opener=urlopen):
         return
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + '.download')
-    with opener(url, timeout=60) as response, temporary.open('wb') as stream:
+    # audio-separator catches RuntimeError to try its official fallback URL.
+    # Preserve that contract when replacing its downloader with atomic writes.
+    try:
+        response = opener(url, timeout=60)
+    except URLError as error:
+        raise RuntimeError(f'Model download failed: {error}') from error
+    with response, temporary.open('wb') as stream:
         expected = int(response.headers.get('Content-Length', 0))
         size, last_report = 0, 0
         while True:

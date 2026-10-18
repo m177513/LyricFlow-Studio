@@ -2,6 +2,7 @@ import sys
 import unittest
 import io
 import tempfile
+from urllib.error import HTTPError
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'worker'))
 from alignment import align_to_words
@@ -16,6 +17,21 @@ def fixture():
 
 
 class RetryTests(unittest.TestCase):
+    def test_missing_model_config_allows_official_fallback(self):
+        class Response(io.BytesIO):
+            headers = {'Content-Length': '4'}
+        def missing(*args, **kwargs):
+            raise HTTPError('https://example.invalid/config.yaml', 404, 'Not Found', {}, None)
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'config.yaml'
+            # Same exception contract as audio-separator's alternate URL logic.
+            try:
+                atomic_download('primary', target, opener=missing)
+            except RuntimeError:
+                self.assertFalse(target.exists())
+                atomic_download('fallback', target, opener=lambda *a, **kw: Response(b'test'))
+            self.assertEqual(target.read_bytes(), b'test')
+
     def test_original_is_selected_when_separation_loses_lines(self):
         source, anchors = fixture()
         better, _ = align_to_words(source, [{'word': 'intro', 'start': 1, 'end': 2},

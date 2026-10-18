@@ -4,9 +4,17 @@ setlocal
 cd /d "%~dp0"
 echo Installing vocal separation and Whisper into .venv-audio...
 if not exist .venv-audio\Scripts\python.exe (
-  python -m venv .venv-audio
-  if errorlevel 1 goto failed
+  if exist .venv\Scripts\python.exe (
+    .venv\Scripts\python.exe -m venv .venv-audio
+  ) else (
+    call scripts\select-python.bat
+    if errorlevel 1 goto failed
+    call %%LYRICFLOW_INSTALL_PYTHON%% -m venv .venv-audio
+  )
 )
+if errorlevel 1 goto failed
+.venv-audio\Scripts\python.exe -c "import sys; sys.exit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)"
+if errorlevel 1 goto failed
 .venv-audio\Scripts\python.exe --version
 if errorlevel 1 goto failed
 .venv-audio\Scripts\python.exe -m pip install -r requirements-audio.txt
